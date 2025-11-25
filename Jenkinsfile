@@ -26,7 +26,7 @@ pipeline {
             unzip sonar-scanner-5.0.1.3006-linux.zip
             mv sonar-scanner-5.0.1.3006-linux sonar-scanner
             ./sonar-scanner/bin/sonar-scanner \
-              -Dsonar.projectKey=2401098-BlockVote-Anis-Khan \
+              -Dsonar.projectKey=blockvote-2401098 \
               -Dsonar.sources=. \
               -Dsonar.host.url=$SONAR_HOST_URL \
               -Dsonar.login=$SONAR_AUTH
