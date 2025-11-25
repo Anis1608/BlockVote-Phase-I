@@ -18,24 +18,27 @@ pipeline {
             }
         }
 
-     stage('SonarQube Analysis') {
+   stage('SonarQube Analysis') {
+    agent {
+        kubernetes {
+            defaultContainer 'dind'
+        }
+    }
     steps {
         withSonarQubeEnv("sonarqube-clg") {
             sh """
-            docker run --rm \
-                -e SONAR_HOST_URL=http://my-sonarqube-sonarqube.sonarqube.svc.cluster.local:9000 \
-                -e SONAR_LOGIN=${SONAR_AUTH} \
-                -v \$(pwd):/usr/src \
-                sonarsource/sonar-scanner-cli \
-                -Dsonar.projectKey=blockvote-2401098 \
-                -Dsonar.sources=. \
-                -Dsonar.exclusions=**/node_modules/** \
-                -Dsonar.host.url=http://my-sonarqube-sonarqube.sonarqube.svc.cluster.local:9000 \
-                -Dsonar.login=${SONAR_AUTH}
+                docker run --rm \
+                    -e SONAR_HOST_URL=$SONAR_HOST_URL \
+                    -e SONAR_LOGIN=$SONAR_AUTH \
+                    -v \$(pwd):/usr/src \
+                    sonarsource/sonar-scanner-cli \
+                    -Dsonar.projectKey=blockvote-2401098 \
+                    -Dsonar.sources=.
             """
         }
     }
 }
+
 
 
         stage('Build Docker Images') {
