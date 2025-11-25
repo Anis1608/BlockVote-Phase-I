@@ -18,19 +18,23 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv("${SONARQUBE}") {
-                    sh """
-                    docker run --rm \
-                    -e SONAR_HOST_URL=\$SONAR_HOST_URL \
-                    -e SONAR_LOGIN=\$SONAR_AUTH \
-                    -v \$(pwd):/usr/src \
-                    sonarsource/sonar-scanner-cli
-                    """
-                }
-            }
+       stage('SonarQube Analysis') {
+    steps {
+        withSonarQubeEnv("sonarqube-clg") {
+            sh """
+            wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-5.0.1.3006-linux.zip
+            unzip sonar-scanner-5.0.1.3006-linux.zip
+            mv sonar-scanner-5.0.1.3006-linux sonar-scanner
+            ./sonar-scanner/bin/sonar-scanner \
+              -Dsonar.projectKey=2401098-BlockVote-Anis-Khan \
+              -Dsonar.sources=. \
+              -Dsonar.host.url=$SONAR_HOST_URL \
+              -Dsonar.login=$SONAR_AUTH
+            """
         }
+    }
+}
+
 
         stage('Build Docker Images') {
             steps {
