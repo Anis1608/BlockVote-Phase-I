@@ -2,24 +2,32 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE = 'sonarqube-clg'  // Jenkins SonarQube server name
-        NEXUS_RAW = "http://nexus.imcc.com/repository/2401098-BlockVote-Anis-Khan/"  // YOUR RAW repo
+        SONARQUBE = 'sonarqube-clg'
+        SONAR_AUTH = 'sqp_51dc6dfb789de440cbc3320e8591365708d7018b'
+        NEXUS_RAW = "http://nexus.imcc.com/repository/2401098-BlockVote-Anis-Khan/"
         NEXUS_USER = "student"
         NEXUS_PASS = "Imcc@2025"
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/Anis1608/BlockVote.git'
+                git branch: 'master',
+                    url: 'https://github.com/Anis1608/BlockVote-Phase-I.git'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv("${SONARQUBE}") {
-                    sh 'sonar-scanner'
+                    sh """
+                    docker run --rm \
+                    -e SONAR_HOST_URL=\$SONAR_HOST_URL \
+                    -e SONAR_LOGIN=\$SONAR_AUTH \
+                    -v \$(pwd):/usr/src \
+                    sonarsource/sonar-scanner-cli
+                    """
                 }
             }
         }
@@ -41,13 +49,8 @@ pipeline {
         stage('Upload to Nexus RAW Repo') {
             steps {
                 sh """
-                curl -u ${NEXUS_USER}:${NEXUS_PASS} \
-                --upload-file backend.tar \
-                ${NEXUS_RAW}/backend.tar
-
-                curl -u ${NEXUS_USER}:${NEXUS_PASS} \
-                --upload-file frontend.tar \
-                ${NEXUS_RAW}/frontend.tar
+                curl -u ${NEXUS_USER}:${NEXUS_PASS} --upload-file backend.tar ${NEXUS_RAW}/backend.tar
+                curl -u ${NEXUS_USER}:${NEXUS_PASS} --upload-file frontend.tar ${NEXUS_RAW}/frontend.tar
                 """
             }
         }
