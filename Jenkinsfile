@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE = 'https://sonarqube.imcc.com/'  // Jenkins SonarQube server name
+        SONARQUBE = 'http://sonarqube.imcc.com/'  // Jenkins SonarQube server name
         NEXUS_RAW = "http://nexus.imcc.com/repository/2401098-BlockVote-Anis-Khan/"  // YOUR RAW repo
         NEXUS_USER = "student"
         NEXUS_PASS = "Imcc@2025"
