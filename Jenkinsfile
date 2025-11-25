@@ -43,7 +43,7 @@ spec:
 
     environment {
         SONARQUBE = 'sonarqube-clg'
-        SONAR_TOKEN = "sqp_xxxxxxxxxxxxxxxxxxxxxxxxx"
+        SONAR_TOKEN = "sqp_51dc6dfb789de440cbc3320e8591365708d7018b"
         NEXUS_RAW = "http://nexus.imcc.com/repository/2401098-BlockVote-Anis-Khan/"
         NEXUS_USER = "student"
         NEXUS_PASS = "Imcc@2025"
