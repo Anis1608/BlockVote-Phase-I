@@ -18,9 +18,10 @@ pipeline {
             }
         }
 
-   stage('SonarQube Analysis') {
+ stage('SonarQube Analysis') {
     agent {
         kubernetes {
+            label "sonar-agent"
             defaultContainer 'dind'
         }
     }
@@ -28,12 +29,13 @@ pipeline {
         withSonarQubeEnv("sonarqube-clg") {
             sh """
                 docker run --rm \
-                    -e SONAR_HOST_URL=$SONAR_HOST_URL \
-                    -e SONAR_LOGIN=$SONAR_AUTH \
-                    -v \$(pwd):/usr/src \
-                    sonarsource/sonar-scanner-cli \
-                    -Dsonar.projectKey=blockvote-2401098 \
-                    -Dsonar.sources=.
+                -e SONAR_HOST_URL=$SONAR_HOST_URL \
+                -e SONAR_LOGIN=$SONAR_AUTH \
+                -v \$(pwd):/usr/src \
+                sonarsource/sonar-scanner-cli \
+                -Dsonar.projectKey=blockvote-2401098 \
+                -Dsonar.sources=. \
+                -Dsonar.host.url=$SONAR_HOST_URL
             """
         }
     }
