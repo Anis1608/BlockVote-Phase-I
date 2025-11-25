@@ -77,8 +77,8 @@ spec:
             steps {
                 container('dind') {
                     sh """
-                        docker build -t blockvote-backend:latest backend/
-                        docker build -t blockvote-frontend:latest frontend/
+                        docker build -t blockvote-backend:latest Backend/
+                        docker build -t blockvote-frontend:latest Frontend/
                     """
                 }
             }
