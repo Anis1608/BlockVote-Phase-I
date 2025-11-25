@@ -18,24 +18,25 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv("sonarqube-clg") {
-                    container('dind') {
-                        sh """
-                        docker run --rm \
-                            -e SONAR_HOST_URL=$SONAR_HOST_URL \
-                            -e SONAR_LOGIN=$SONAR_AUTH \
-                            -v $(pwd):/usr/src \
-                            sonarsource/sonar-scanner-cli \
-                            -Dsonar.projectKey=blockvote-2401098 \
-                            -Dsonar.sources=. \
-                            -Dsonar.login=$SONAR_AUTH
-                        """
-                    }
-                }
+       stage('SonarQube Analysis') {
+    steps {
+        withSonarQubeEnv("sonarqube-clg") {
+            container('dind') {
+                sh """
+                docker run --rm \
+                    -e SONAR_HOST_URL=$SONAR_HOST_URL \
+                    -e SONAR_LOGIN=$SONAR_AUTH \
+                    -v \$(pwd):/usr/src \
+                    sonarsource/sonar-scanner-cli \
+                    -Dsonar.projectKey=blockvote-2401098 \
+                    -Dsonar.sources=. \
+                    -Dsonar.login=$SONAR_AUTH
+                """
             }
         }
+    }
+}
+
 
         stage('Build Docker Images') {
             steps {
