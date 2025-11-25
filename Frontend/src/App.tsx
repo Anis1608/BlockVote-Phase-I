@@ -36,7 +36,7 @@ import Home from "./pages/Index";
 import PublicResultPage from "./pages/results/PublicResultPage";
 
 import ForgotPassword from "./pages/auth/ForgotPassword";
-import PublicCandidate from "./pages/voter/publicCandidate";
+import PublicCandidate from "./pages/voter/PublicCandidate";
 // import { StellarDemo } from "./components/layouts/demo";
 const queryClient = new QueryClient();
 
