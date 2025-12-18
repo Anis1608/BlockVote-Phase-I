@@ -1,124 +1,159 @@
 pipeline {
-
     agent {
         kubernetes {
-            yaml """
+            yaml '''
 apiVersion: v1
 kind: Pod
 spec:
   containers:
 
+  - name: node
+    image: mirror.gcr.io/library/node:20
+    command: ["cat"]
+    tty: true
+
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+      - /bin/sh
+      - -c
+      - sleep infinity
+    tty: true
+    securityContext:
+      runAsUser: 0
+      readOnlyRootFilesystem: false
+    env:
+      - name: KUBECONFIG
+        value: /kube/config
+    volumeMounts:
+      - name: kubeconfig-secret
+        mountPath: /kube/config
+        subPath: kubeconfig
+
   - name: dind
     image: docker:dind
+    args:
+      - "--storage-driver=overlay2"
+      - "--insecure-registry=nexus.imcc.com:8085"
     securityContext:
       privileged: true
     env:
-    - name: DOCKER_TLS_CERTDIR
-      value: ""
-    args:
-    - "--storage-driver=overlay2"
-    volumeMounts:
-    - name: workspace-volume
-      mountPath: /home/jenkins/agent
-
-  - name: jnlp
-    image: jenkins/inbound-agent:3309.v27b_9314fd1a_4-1
-    env:
-    - name: JENKINS_AGENT_WORKDIR
-      value: "/home/jenkins/agent"
-    volumeMounts:
-    - mountPath: "/home/jenkins/agent"
-      name: workspace-volume
+      - name: DOCKER_TLS_CERTDIR
+        value: ""
 
   volumes:
-  - name: workspace-volume
-    emptyDir: {}
-"""
+  - name: kubeconfig-secret
+    secret:
+      secretName: kubeconfig-secret
+'''
         }
     }
 
     environment {
-        // PATH-BASED DOCKER REGISTRY
-        REGISTRY_HOST = "nexus.imcc.com:8085"
-        REGISTRY_PATH = "blockvote-2401098"
-
-        BACKEND_IMAGE = "blockvote-backend"
-        FRONTEND_IMAGE = "blockvote-frontend"
-
-        // Kubernetes namespace (change if required)
-        NAMESPACE = "blockvote-2401098"
+        NAMESPACE   = "2401098"
+        NEXUS_HOST  = "nexus.imcc.com:8085"
+        NEXUS_REPO  = "blockvote-2401098"
     }
 
     stages {
 
-        stage('CHECK') {
+        stage("CHECK") {
             steps {
-                echo "DEBUG: BlockVote Pipeline Started"
+                echo "BlockVote Jenkins Pipeline Started for ${NAMESPACE}"
             }
         }
 
-        stage('Build Backend Image') {
+        /* FRONTEND BUILD */
+        stage('Install + Build Frontend') {
             steps {
-                container('dind') {
-                    sh """
-                    docker build -t ${BACKEND_IMAGE}:${BUILD_NUMBER} backend
-                    """
-                }
-            }
-        }
-
-        stage('Build Frontend Image') {
-            steps {
-                container('dind') {
-                    sh """
-                    docker build -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} frontend
-                    """
-                }
-            }
-        }
-
-        stage('Login to Nexus') {
-            steps {
-                container('dind') {
-                    withCredentials([usernamePassword(
-                        credentialsId: 'nexus-creds',
-                        usernameVariable: 'student',
-                        passwordVariable: 'Imcc@2025'
-                    )]) {
-                        sh """
-                        docker login ${REGISTRY_HOST} -u $USER -p $PASS
-                        """
+                dir('frontend') {
+                    container('node') {
+                        sh '''
+                            npm cache clean --force || true
+                            rm -rf node_modules package-lock.json || true
+                            npm install --legacy-peer-deps
+                            CI=false npm run build
+                        '''
                     }
                 }
             }
         }
 
-        stage('Push Images to Nexus') {
+        /* BACKEND INSTALL */
+        stage('Install Backend') {
             steps {
-                container('dind') {
+                dir('backend') {
+                    container('node') {
+                        sh '''
+                            npm cache clean --force || true
+                            rm -rf node_modules package-lock.json || true
+                            npm install --legacy-peer-deps
+                        '''
+                    }
+                }
+            }
+        }
+
+        /* DOCKER BUILD */
+        stage("Build Docker Images") {
+            steps {
+                container("dind") {
                     sh """
-                    docker tag ${BACKEND_IMAGE}:${BUILD_NUMBER} \
-                      ${REGISTRY_HOST}/${REGISTRY_PATH}/${BACKEND_IMAGE}:${BUILD_NUMBER}
-
-                    docker tag ${FRONTEND_IMAGE}:${BUILD_NUMBER} \
-                      ${REGISTRY_HOST}/${REGISTRY_PATH}/${FRONTEND_IMAGE}:${BUILD_NUMBER}
-
-                    docker push ${REGISTRY_HOST}/${REGISTRY_PATH}/${BACKEND_IMAGE}:${BUILD_NUMBER}
-                    docker push ${REGISTRY_HOST}/${REGISTRY_PATH}/${FRONTEND_IMAGE}:${BUILD_NUMBER}
+                        docker build -t blockvote-frontend:latest -f frontend/Dockerfile frontend/
+                        docker build -t blockvote-backend:latest  -f backend/Dockerfile backend/
                     """
                 }
             }
         }
 
+        /* LOGIN TO NEXUS */
+        stage("Login to Nexus") {
+            steps {
+                container("dind") {
+                    sh """
+                        docker login ${NEXUS_HOST} \
+                          -u student \
+                          -p Imcc@2025
+                    """
+                }
+            }
+        }
+
+        /* PUSH IMAGES */
+        stage("Push Images") {
+            steps {
+                container("dind") {
+                    sh """
+                        docker tag blockvote-frontend:latest ${NEXUS_HOST}/${NEXUS_REPO}/blockvote-frontend:v1
+                        docker tag blockvote-backend:latest  ${NEXUS_HOST}/${NEXUS_REPO}/blockvote-backend:v1
+
+                        docker push ${NEXUS_HOST}/${NEXUS_REPO}/blockvote-frontend:v1
+                        docker push ${NEXUS_HOST}/${NEXUS_REPO}/blockvote-backend:v1
+                    """
+                }
+            }
+        }
+
+        /* KUBERNETES DEPLOY */
         stage('Deploy to Kubernetes') {
             steps {
-                container('dind') {
-                    sh """
-                    sed -i 's|BACKEND_TAG|${BUILD_NUMBER}|g' k8s/backend-deployment.yaml
-                    sed -i 's|FRONTEND_TAG|${BUILD_NUMBER}|g' k8s/frontend-deployment.yaml
+                container('kubectl') {
+                    sh '''
+                        echo "Creating namespace if not exists"
+                        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
 
-                    kubectl apply -f k8s/ -n ${NAMESPACE}
-                    """
+                        echo "Applying Backend"
+                        kubectl apply -n ${NAMESPACE} -f k8s/backend-deployment.yaml
+                        kubectl apply -n ${NAMESPACE} -f k8s/backend-service.yaml
+
+                        echo "Applying Frontend"
+                        kubectl apply -n ${NAMESPACE} -f k8s/frontend-deployment.yaml
+                        kubectl apply -n ${NAMESPACE} -f k8s/frontend-service.yaml
+                        kubectl apply -n ${NAMESPACE} -f k8s/ingress.yaml
+
+                        echo "Pods Status"
+                        kubectl get pods -n ${NAMESPACE}
+                    '''
                 }
             }
         }
