@@ -50,9 +50,9 @@ spec:
     }
 
     environment {
-        NAMESPACE   = "2401098"
-        NEXUS_HOST  = "nexus.imcc.com:8085"
-        NEXUS_REPO  = "blockvote-2401098"
+        NAMESPACE  = "2401098"
+        NEXUS_HOST = "nexus.imcc.com:8085"
+        NEXUS_REPO = "blockvote-2401098"
     }
 
     stages {
@@ -63,12 +63,13 @@ spec:
             }
         }
 
-        /* FRONTEND BUILD */
+        /* ================= FRONTEND ================= */
         stage('Install + Build Frontend') {
             steps {
                 dir('frontend') {
                     container('node') {
                         sh '''
+                            echo "=== Frontend install & build ==="
                             npm cache clean --force || true
                             rm -rf node_modules package-lock.json || true
                             npm install --legacy-peer-deps
@@ -79,12 +80,13 @@ spec:
             }
         }
 
-        /* BACKEND INSTALL */
+        /* ================= BACKEND ================= */
         stage('Install Backend') {
             steps {
                 dir('backend') {
                     container('node') {
                         sh '''
+                            echo "=== Backend install ==="
                             npm cache clean --force || true
                             rm -rf node_modules package-lock.json || true
                             npm install --legacy-peer-deps
@@ -94,11 +96,12 @@ spec:
             }
         }
 
-        /* DOCKER BUILD */
+        /* ================= DOCKER BUILD ================= */
         stage("Build Docker Images") {
             steps {
                 container("dind") {
                     sh """
+                        echo "=== Building Docker images ==="
                         docker build -t blockvote-frontend:latest -f frontend/Dockerfile frontend/
                         docker build -t blockvote-backend:latest  -f backend/Dockerfile backend/
                     """
@@ -106,7 +109,7 @@ spec:
             }
         }
 
-        /* LOGIN TO NEXUS */
+        /* ================= NEXUS LOGIN ================= */
         stage("Login to Nexus") {
             steps {
                 container("dind") {
@@ -119,7 +122,7 @@ spec:
             }
         }
 
-        /* PUSH IMAGES */
+        /* ================= PUSH IMAGES ================= */
         stage("Push Images") {
             steps {
                 container("dind") {
@@ -134,24 +137,24 @@ spec:
             }
         }
 
-        /* KUBERNETES DEPLOY */
+        /* ================= KUBERNETES DEPLOY ================= */
         stage('Deploy to Kubernetes') {
             steps {
                 container('kubectl') {
                     sh '''
-                        echo "Creating namespace if not exists"
+                        echo "=== Creating namespace if not exists ==="
                         kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
 
-                        echo "Applying Backend"
+                        echo "=== Deploying Backend ==="
                         kubectl apply -n ${NAMESPACE} -f k8s/backend-deployment.yaml
                         kubectl apply -n ${NAMESPACE} -f k8s/backend-service.yaml
 
-                        echo "Applying Frontend"
+                        echo "=== Deploying Frontend ==="
                         kubectl apply -n ${NAMESPACE} -f k8s/frontend-deployment.yaml
                         kubectl apply -n ${NAMESPACE} -f k8s/frontend-service.yaml
                         kubectl apply -n ${NAMESPACE} -f k8s/ingress.yaml
 
-                        echo "Pods Status"
+                        echo "=== Pods Status ==="
                         kubectl get pods -n ${NAMESPACE}
                     '''
                 }
