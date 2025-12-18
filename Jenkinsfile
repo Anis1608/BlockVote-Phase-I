@@ -7,10 +7,6 @@ apiVersion: v1
 kind: Pod
 spec:
   containers:
-  - name: sonar-scanner
-    image: sonarsource/sonar-scanner-cli
-    command: ["cat"]
-    tty: true
 
   - name: dind
     image: docker:dind
@@ -42,81 +38,86 @@ spec:
     }
 
     environment {
-        SONARQUBE = 'sonarqube-clg'
-        SONAR_TOKEN = "sqp_51dc6dfb789de440cbc3320e8591365708d7018b"
-        NEXUS_RAW = "http://nexus.imcc.com/repository/2401098-BlockVote-Anis-Khan/"
-        NEXUS_USER = "student"
-        NEXUS_PASS = "Imcc@2025"
+        // PATH-BASED DOCKER REGISTRY
+        REGISTRY_HOST = "nexus.imcc.com:8085"
+        REGISTRY_PATH = "blockvote-2401098"
+
+        BACKEND_IMAGE = "blockvote-backend"
+        FRONTEND_IMAGE = "blockvote-frontend"
+
+        // Kubernetes namespace (change if required)
+        NAMESPACE = "blockvote-2401098"
     }
 
     stages {
 
         stage('CHECK') {
             steps {
-                echo "DEBUG: BlockVote Pipeline Running"
+                echo "DEBUG: BlockVote Pipeline Started"
             }
         }
 
-        stage('SonarQube Scan') {
+        stage('Build Backend Image') {
             steps {
-                container('sonar-scanner') {
-                    withSonarQubeEnv("sonarqube-clg") {
+                container('dind') {
+                    sh """
+                    docker build -t ${BACKEND_IMAGE}:${BUILD_NUMBER} backend
+                    """
+                }
+            }
+        }
+
+        stage('Build Frontend Image') {
+            steps {
+                container('dind') {
+                    sh """
+                    docker build -t ${FRONTEND_IMAGE}:${BUILD_NUMBER} frontend
+                    """
+                }
+            }
+        }
+
+        stage('Login to Nexus') {
+            steps {
+                container('dind') {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'nexus-creds',
+                        usernameVariable: 'student',
+                        passwordVariable: 'Imcc@2025'
+                    )]) {
                         sh """
-                            sonar-scanner \
-                              -Dsonar.projectKey=blockvote-2401098 \
-                              -Dsonar.sources=. \
-                              -Dsonar.host.url=http://my-sonarqube-sonarqube.sonarqube.svc.cluster.local:9000 \
-                              -Dsonar.login=${SONAR_TOKEN}
+                        docker login ${REGISTRY_HOST} -u $USER -p $PASS
                         """
                     }
                 }
             }
         }
 
-        stage('Build Docker Images') {
+        stage('Push Images to Nexus') {
             steps {
                 container('dind') {
                     sh """
-                        docker build -t blockvote-backend:latest Backend/
-                        docker build -t blockvote-frontend:latest Frontend/
+                    docker tag ${BACKEND_IMAGE}:${BUILD_NUMBER} \
+                      ${REGISTRY_HOST}/${REGISTRY_PATH}/${BACKEND_IMAGE}:${BUILD_NUMBER}
+
+                    docker tag ${FRONTEND_IMAGE}:${BUILD_NUMBER} \
+                      ${REGISTRY_HOST}/${REGISTRY_PATH}/${FRONTEND_IMAGE}:${BUILD_NUMBER}
+
+                    docker push ${REGISTRY_HOST}/${REGISTRY_PATH}/${BACKEND_IMAGE}:${BUILD_NUMBER}
+                    docker push ${REGISTRY_HOST}/${REGISTRY_PATH}/${FRONTEND_IMAGE}:${BUILD_NUMBER}
                     """
                 }
             }
         }
 
-        stage('Export Docker Images') {
+        stage('Deploy to Kubernetes') {
             steps {
                 container('dind') {
                     sh """
-                        docker save -o backend.tar blockvote-backend:latest
-                        docker save -o frontend.tar blockvote-frontend:latest
-                    """
-                }
-            }
-        }
+                    sed -i 's|BACKEND_TAG|${BUILD_NUMBER}|g' k8s/backend-deployment.yaml
+                    sed -i 's|FRONTEND_TAG|${BUILD_NUMBER}|g' k8s/frontend-deployment.yaml
 
-        stage('Upload to Nexus RAW Repo') {
-            steps {
-                sh """
-                curl -u ${NEXUS_USER}:${NEXUS_PASS} --upload-file backend.tar ${NEXUS_RAW}/backend.tar
-                curl -u ${NEXUS_USER}:${NEXUS_PASS} --upload-file frontend.tar ${NEXUS_RAW}/frontend.tar
-                """
-            }
-        }
-
-        stage('Auto Deployment (Docker Run)') {
-            steps {
-                container('dind') {
-                    sh """
-                        docker load -i backend.tar
-                        docker stop blockvote-backend || true
-                        docker rm blockvote-backend || true
-                        docker run -d --name blockvote-backend -p 5000:5000 blockvote-backend:latest
-
-                        docker load -i frontend.tar
-                        docker stop blockvote-frontend || true
-                        docker rm blockvote-frontend || true
-                        docker run -d --name blockvote-frontend -p 3000:80 blockvote-frontend:latest
+                    kubectl apply -f k8s/ -n ${NAMESPACE}
                     """
                 }
             }
